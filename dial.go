@@ -10,9 +10,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/sandertv/go-raknet/internal"
+	"github.com/Yeah114/go-raknet/internal"
 
-	"github.com/sandertv/go-raknet/internal/message"
+	"github.com/Yeah114/go-raknet/internal/message"
 )
 
 // UpstreamDialer is an interface for anything compatible with net.Dialer.
@@ -65,6 +65,13 @@ func Dial(address string) (*Conn, error) {
 	return d.Dial(address)
 }
 
+// DialVersion attempts to dial a RakNet connection to the address passed using
+// the protocol version passed.
+func DialVersion(address string, protocolVersion byte) (*Conn, error) {
+	var d Dialer
+	return d.DialVersion(address, protocolVersion)
+}
+
 // DialTimeout attempts to dial a RakNet connection to the address passed. The
 // address may be either an IP address or a hostname, combined with a port that
 // is separated with ':'. DialTimeout will attempt to dial a connection within
@@ -73,6 +80,13 @@ func Dial(address string) (*Conn, error) {
 func DialTimeout(address string, timeout time.Duration) (*Conn, error) {
 	var d Dialer
 	return d.DialTimeout(address, timeout)
+}
+
+// DialTimeoutVersion attempts to dial a RakNet connection to the address passed
+// using the protocol version passed. It times out after the duration passed.
+func DialTimeoutVersion(address string, timeout time.Duration, protocolVersion byte) (*Conn, error) {
+	var d Dialer
+	return d.DialTimeoutVersion(address, timeout, protocolVersion)
 }
 
 // DialContext attempts to dial a RakNet connection to the address passed. The
@@ -86,6 +100,14 @@ func DialContext(ctx context.Context, address string) (*Conn, error) {
 	return d.DialContext(ctx, address)
 }
 
+// DialContextVersion attempts to dial a RakNet connection to the address passed
+// using the protocol version passed. DialContextVersion will terminate as soon
+// as possible when the context.Context is closed.
+func DialContextVersion(ctx context.Context, address string, protocolVersion byte) (*Conn, error) {
+	var d Dialer
+	return d.DialContextVersion(ctx, address, protocolVersion)
+}
+
 // Dialer allows dialing a RakNet connection with specific configuration, such
 // as the protocol version of the connection and the logger used.
 type Dialer struct {
@@ -97,6 +119,10 @@ type Dialer struct {
 	// UpstreamDialer is a dialer that will override the default dialer for
 	// opening outgoing connections. The default is a net.Dial("udp", ...).
 	UpstreamDialer UpstreamDialer
+
+	// ProtocolVersion is the RakNet protocol version used during the
+	// connection handshake. If zero, the default protocol version is used.
+	ProtocolVersion byte
 
 	// MaxTransientErrors is the maximum number of transient errors to ignore
 	// before returning an error. These include errors that can occur on
@@ -181,6 +207,13 @@ func (dialer Dialer) error(op string, err error) *net.OpError {
 	return &net.OpError{Op: op, Net: "raknet", Source: nil, Addr: nil, Err: err}
 }
 
+func (dialer Dialer) protocolVersion() byte {
+	if dialer.ProtocolVersion == 0 {
+		return protocolVersion
+	}
+	return dialer.ProtocolVersion
+}
+
 // dial dials a connection to an address and assigns the deadline of the context
 // to the connection.
 func (dialer Dialer) dial(ctx context.Context, address string) (net.Conn, error) {
@@ -213,6 +246,13 @@ func (dialer Dialer) Dial(address string) (*Conn, error) {
 	return dialer.DialContext(ctx, address)
 }
 
+// DialVersion attempts to dial a RakNet connection to the address passed using
+// the protocol version passed.
+func (dialer Dialer) DialVersion(address string, protocolVersion byte) (*Conn, error) {
+	dialer.ProtocolVersion = protocolVersion
+	return dialer.Dial(address)
+}
+
 // DialTimeout attempts to dial a RakNet connection to the address passed. The
 // address may be either an IP address or a hostname, combined with a port that
 // is separated with ':'. DialTimeout will attempt to dial a connection within
@@ -222,6 +262,13 @@ func (dialer Dialer) DialTimeout(address string, timeout time.Duration) (*Conn, 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	return dialer.DialContext(ctx, address)
+}
+
+// DialTimeoutVersion attempts to dial a RakNet connection to the address passed
+// using the protocol version passed. It times out after the duration passed.
+func (dialer Dialer) DialTimeoutVersion(address string, timeout time.Duration, protocolVersion byte) (*Conn, error) {
+	dialer.ProtocolVersion = protocolVersion
+	return dialer.DialTimeout(address, timeout)
 }
 
 // DialContext attempts to dial a RakNet connection to the address passed. The
@@ -251,6 +298,7 @@ func (dialer Dialer) DialContext(ctx context.Context, address string) (*Conn, er
 		ticker:             time.NewTicker(time.Second / 2),
 		maxTransientErrors: dialer.MaxTransientErrors,
 		maxMTU:             dialer.MaxMTU,
+		protocolVersion:    dialer.protocolVersion(),
 	}
 	defer cs.ticker.Stop()
 	if err = cs.discoverMTU(ctx); err != nil {
@@ -259,6 +307,14 @@ func (dialer Dialer) DialContext(ctx context.Context, address string) (*Conn, er
 		return nil, dialer.error("dial", fmt.Errorf("open connection: %w", err))
 	}
 	return dialer.connect(ctx, cs)
+}
+
+// DialContextVersion attempts to dial a RakNet connection to the address passed
+// using the protocol version passed. DialContextVersion will terminate as soon
+// as possible when the context.Context is closed.
+func (dialer Dialer) DialContextVersion(ctx context.Context, address string, protocolVersion byte) (*Conn, error) {
+	dialer.ProtocolVersion = protocolVersion
+	return dialer.DialContext(ctx, address)
 }
 
 // dial finishes the RakNet connection sequence and returns a Conn if
@@ -326,6 +382,8 @@ type connState struct {
 
 	transientErrorCount int
 	maxTransientErrors  int
+
+	protocolVersion byte
 }
 
 const minSupportedMTU = 576
@@ -398,7 +456,7 @@ func (state *connState) discoverMTU(ctx context.Context) error {
 			if err := response.UnmarshalBinary(b[1:n]); err != nil {
 				return fmt.Errorf("read incompatible protocol version: %w", err)
 			}
-			return fmt.Errorf("mismatched protocol: client protocol = %v, server protocol = %v", protocolVersion, response.ServerProtocol)
+			return fmt.Errorf("mismatched protocol: client protocol = %v, server protocol = %v", state.protocolVersion, response.ServerProtocol)
 		}
 	}
 }
@@ -473,7 +531,7 @@ func (state *connState) request2(ctx context.Context, mtu uint16) {
 // openConnectionRequest1 sends an open connection request 1 packet to the
 // server. If not successful, an error is returned.
 func (state *connState) openConnectionRequest1(mtu uint16) {
-	data, _ := (&message.OpenConnectionRequest1{ClientProtocol: protocolVersion, MTU: mtu}).MarshalBinary()
+	data, _ := (&message.OpenConnectionRequest1{ClientProtocol: state.protocolVersion, MTU: mtu}).MarshalBinary()
 	_, _ = state.conn.Write(data)
 }
 

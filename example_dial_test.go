@@ -2,7 +2,7 @@ package raknet_test
 
 import (
 	"fmt"
-	"github.com/sandertv/go-raknet"
+	"github.com/Yeah114/go-raknet"
 )
 
 func ExamplePing() {

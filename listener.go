@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/sandertv/go-raknet/internal"
+	"github.com/Yeah114/go-raknet/internal"
 )
 
 // UpstreamPacketListener allows for a custom PacketListener implementation.
@@ -29,6 +29,14 @@ type ListenConfig struct {
 
 	// UpstreamPacketListener adds an abstraction for net.ListenPacket.
 	UpstreamPacketListener UpstreamPacketListener
+
+	// ProtocolVersion is the RakNet protocol version accepted during the
+	// connection handshake. If zero, the default protocol version is used.
+	ProtocolVersion byte
+
+	// ProtocolVersions is the list of RakNet protocol versions accepted during
+	// the connection handshake. If empty, ProtocolVersion is used.
+	ProtocolVersions []byte
 
 	// DisableCookies specifies if cookies should be generated and verified for
 	// new incoming connections. This is a security measure against IP spoofing,
@@ -120,6 +128,28 @@ func (conf ListenConfig) Listen(address string) (*Listener, error) {
 	return listener, nil
 }
 
+func (conf ListenConfig) protocolVersion() byte {
+	if conf.ProtocolVersion == 0 {
+		return protocolVersion
+	}
+	return conf.ProtocolVersion
+}
+
+func (conf ListenConfig) acceptsProtocolVersion(version byte) bool {
+	if len(conf.ProtocolVersions) == 0 {
+		return version == conf.protocolVersion()
+	}
+	for _, accepted := range conf.ProtocolVersions {
+		if accepted == 0 {
+			accepted = protocolVersion
+		}
+		if version == accepted {
+			return true
+		}
+	}
+	return false
+}
+
 // Listen listens on the address passed and returns a listener that may be used
 // to accept connections. If not successful, an error is returned. The address
 // follows the same rules as those defined in the net.TCPListen() function.
@@ -128,6 +158,18 @@ func (conf ListenConfig) Listen(address string) (*Listener, error) {
 func Listen(address string) (*Listener, error) {
 	var lc ListenConfig
 	return lc.Listen(address)
+}
+
+// ListenVersion listens on the address passed and returns a listener accepting
+// the protocol version passed.
+func ListenVersion(address string, protocolVersion byte) (*Listener, error) {
+	return ListenConfig{ProtocolVersion: protocolVersion}.Listen(address)
+}
+
+// ListenAutoVersion listens on the address passed and returns a listener
+// accepting any of the protocol versions passed.
+func ListenAutoVersion(address string, protocolVersions ...byte) (*Listener, error) {
+	return ListenConfig{ProtocolVersions: protocolVersions}.Listen(address)
 }
 
 // Accept blocks until a connection can be accepted by the listener. If

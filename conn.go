@@ -14,8 +14,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/sandertv/go-raknet/internal"
-	"github.com/sandertv/go-raknet/internal/message"
+	"github.com/Yeah114/go-raknet/internal"
+	"github.com/Yeah114/go-raknet/internal/message"
 )
 
 const (

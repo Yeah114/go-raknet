@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/sandertv/go-raknet/internal/message"
+	"github.com/Yeah114/go-raknet/internal/message"
 )
 
 type connectionHandler interface {
@@ -99,8 +99,9 @@ func (h listenerConnectionHandler) handleOpenConnectionRequest1(b []byte, addr n
 		return fmt.Errorf("read OPEN_CONNECTION_REQUEST_1: %w", err)
 	}
 	mtuSize := min(pk.MTU, h.l.maxMTU())
+	protocolVersion := h.l.conf.protocolVersion()
 
-	if pk.ClientProtocol != protocolVersion {
+	if !h.l.conf.acceptsProtocolVersion(pk.ClientProtocol) {
 		data, _ := (&message.IncompatibleProtocolVersion{ServerGUID: h.l.id, ServerProtocol: protocolVersion}).MarshalBinary()
 		_, _ = h.l.conn.WriteTo(data, addr)
 		return fmt.Errorf("handle OPEN_CONNECTION_REQUEST_1: incompatible protocol version %v (listener protocol = %v)", pk.ClientProtocol, protocolVersion)
