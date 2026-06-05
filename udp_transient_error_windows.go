@@ -14,6 +14,7 @@ const (
 	wsaeNetUnreach  = syscall.Errno(10051) // ENETUNREACH
 	wsaeConnReset   = syscall.Errno(10054) // ECONNRESET
 	wsaeConnAborted = syscall.Errno(10053) // ECONNABORTED
+	wsaeMsgSize     = syscall.Errno(10040) // EMSGSIZE
 )
 
 // isTransientUDPReadError returns true for read errors on connected UDP sockets
@@ -26,7 +27,7 @@ func isTransientUDPReadError(err error) bool {
 	var errno syscall.Errno
 	if errors.As(err, &errno) {
 		switch errno {
-		case wsaeConnRefused, wsaeHostUnreach, wsaeNetUnreach, wsaeConnReset, wsaeConnAborted:
+		case wsaeConnRefused, wsaeHostUnreach, wsaeNetUnreach, wsaeConnReset, wsaeConnAborted, wsaeMsgSize:
 			return true
 		}
 	}
